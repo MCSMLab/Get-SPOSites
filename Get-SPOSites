@@ -1,0 +1,91 @@
+<#
+.SYNOPSIS
+Lists all SharePoint sites from an M 365 tenant to a CSV file
+
+.DESCRIPTION
+Lists all SharePoint sites from an M 365 tenant to a CSV file
+
+.PARAMETER
+
+.NOTES
+
+Get-SPOSites
+v1.0
+1/3/2024
+By Nathan O'Bryan, MVPr|MCSM
+nathan@mcsmlab.com
+
+.EXAMPLE
+
+.LINK
+https://www.mcsmlab.com/about
+https://github.com/MCSMLab/Get-SPOSites
+#>
+
+CLS
+Write-Host "Script tested with PS v7 and the PnP module" -ForegroundColor Yellow
+Write-Host
+
+#Get Tenant Name
+Write-Host "Enter tenant name like M365x42606247" -ForegroundColor Yellow
+$TenantName = Read-host "What is the tenant name?" -ForegroundColor Yellow
+Connect-PnPOnline -Url $TenantName -Interactive
+CLS
+ 
+#Get all site collections
+$Sites = Get-PnPTenantSite
+#The below command gets only modern Team & Communication sites
+#$Sites = Get-PnPTenantSite | Where -Property Template -In ("GROUP#0", "SITEPAGEPUBLISHING#0")
+   
+$AllSites = @()
+ 
+$i = 0;
+$TotoalSites = $Sites.Count
+#Enumerate site collections and get sub sites recursively
+ForEach($Site in $Sites)
+{
+$i++;
+Write-Progress -activity "Processing $($Site.Url)" -status "$i out of $TotoalSites completed"
+ 
+$SubWebs=$null;
+Try
+{
+#Connect to site collection
+#$SiteConnection = Connect-PnPOnline -Url $Site.Url -Credentials $Cred
+   
+#Get the sub sites of the site collection
+$SubWebs = Get-PnPSubWeb -Recurse $SiteConnection
+  
+#Disconnect-PnPOnline $SiteConnection
+}
+catch{
+Write-Host "Error occured $($Site.Url) : $_.Exception.Message"   -Foreground Red;
+}
+ 
+#Add site collection in AllSites list 
+$AllSites += New-Object PSObject -property $([ordered]@{ 
+SiteName  = $Site.Title            
+SiteURL = $Site.Url
+IsSubSite = $false
+HasSubSites = if ($SubWebs -and $SubWebs.Count -gt 0) { $true } Else {$false}
+SiteCollectionName = $Site.Title
+SiteCollectionURL = $Site.Url
+})
+ 
+if ($SubWebs -and $SubWebs.Count -gt 0) {
+#Enumerate sub sites and add in AllSites list 
+ForEach($SubSite in $SubWebs)
+{
+$AllSites += New-Object PSObject -property $([ordered]@{ 
+SiteName  = $SubSite.Title            
+SiteURL = $SubSite.Url
+IsSubSite = $true
+HasSubSites = $false
+SiteCollectionName = $Site.Title
+SiteCollectionURL = $Site.Url
+})
+}
+}
+}
+#Display all site collections and sub sites
+$AllSites | Select SiteName,SiteURL,IsSubSite | Export-CSV -Path .\SPOSites.csv
